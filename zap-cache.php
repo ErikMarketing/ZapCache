@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Zap Cache
  * Plugin URI: https://github.com/ErikMarketing/zap-cache
- * Description: Lightning-fast cache cleaning with one click from your WordPress admin bar
- * Version: 1.0.0
+ * Description: Lightning-fast cache cleaning with one click. Supports WP Engine, Kinsta, SiteGround, Cloudways and major caching plugins
+ * Version: 1.1.0
  * Author: ErikMarketing
  * Author URI: https://erik.marketing
  * License: GPL-3.0+
@@ -17,19 +17,6 @@
  * @author ErikMarketing
  * @copyright Copyright (c) 2024, ErikE
  * @license GPL-3.0+
- *
- * Zap Cache is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * any later version.
- *
- * Zap Cache is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Zap Cache. If not, see https://www.gnu.org/licenses/gpl-3.0.txt.
  */
 
 // Exit if accessed directly
@@ -38,7 +25,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ZAP_VERSION', '1.0.0');
+define('ZAP_VERSION', '1.1.0');
 define('ZAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ZAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ZAP_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -171,12 +158,48 @@ function zap_purge_cache_callback() {
         // Fire action for other plugins to hook into
         do_action('zap_before_cache_purge');
 
+        // WP Engine Support
+        if (class_exists('WpeCommon')) {
+            if (method_exists('WpeCommon', 'purge_memcached')) {
+                WpeCommon::purge_memcached();
+                $results['wpe_memcached'] = true;
+            }
+            if (method_exists('WpeCommon', 'purge_varnish_cache')) {
+                WpeCommon::purge_varnish_cache();
+                $results['wpe_varnish'] = true;
+            }
+        }
+
+        // Kinsta Support
+        if (isset($GLOBALS['kinsta_cache']) && class_exists('Kinsta\Cache')) {
+            if (method_exists($GLOBALS['kinsta_cache'], 'purge_complete_caches')) {
+                $GLOBALS['kinsta_cache']->purge_complete_caches();
+                $results['kinsta_cache'] = true;
+            }
+        }
+
+        // SiteGround Support
+        if (function_exists('sg_cachepress_purge_cache')) {
+            sg_cachepress_purge_cache();
+            $results['siteground_cache'] = true;
+        }
+
+        // Cloudways Support
+        if (class_exists('Breeze_Admin')) {
+            do_action('breeze_clear_all_cache');
+            $results['cloudways_breeze'] = true;
+        }
+
         // Common Cache Plugins Support
         $cache_plugins = array(
             'w3tc' => 'w3tc_flush_all',
             'wp_super_cache' => 'wp_cache_clear_cache',
             'wp_rocket' => 'rocket_clean_domain',
-            'autoptimize' => array('autoptimizeCache', 'clearall')
+            'wp_fastest_cache' => array('WpFastestCache', 'deleteCache'),
+            'autoptimize' => array('autoptimizeCache', 'clearall'),
+            'litespeed_cache' => array('LiteSpeed_Cache_API', 'purge_all'),
+            'swift_performance' => array('Swift_Performance_Cache', 'clear_all_cache'),
+            'hummingbird' => array('Hummingbird\Core\Cache', 'clear_page_cache')
         );
 
         foreach ($cache_plugins as $plugin => $function) {
@@ -191,14 +214,71 @@ function zap_purge_cache_callback() {
             }
         }
 
+        // Clear Nginx Helper Cache
+        if (class_exists('Nginx_Helper')) {
+            do_action('rt_nginx_helper_purge_all');
+            $results['nginx_helper'] = true;
+        }
+
+        // Clear OPcache if enabled
+        if (function_exists('opcache_reset')) {
+            opcache_reset();
+            $results['opcache'] = true;
+        }
+
+        // Clear object cache for common providers
+        $object_cache_plugins = array(
+            'redis' => 'WP_Redis',
+            'memcached' => 'WP_Object_Cache'
+        );
+
+        foreach ($object_cache_plugins as $cache => $class) {
+            if (class_exists($class)) {
+                wp_cache_flush();
+                $results[$cache . '_object_cache'] = true;
+                break;
+            }
+        }
+
         // Fire action after cache purge
         do_action('zap_after_cache_purge');
+
+        // Add debug information if WP_DEBUG is enabled
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            $results['debug_info'] = array(
+                'hosting_provider' => zap_detect_hosting_provider(),
+                'cleared_caches' => array_keys(array_filter($results))
+            );
+        }
 
         wp_send_json_success($results);
 
     } catch (Exception $e) {
         wp_send_json_error($e->getMessage());
     }
+}
+
+/**
+ * Detect hosting provider
+ * @return string
+ */
+function zap_detect_hosting_provider() {
+    if (class_exists('WpeCommon')) {
+        return 'WP Engine';
+    } elseif (isset($GLOBALS['kinsta_cache'])) {
+        return 'Kinsta';
+    } elseif (function_exists('sg_cachepress_purge_cache')) {
+        return 'SiteGround';
+    } elseif (class_exists('Breeze_Admin')) {
+        return 'Cloudways';
+    } elseif (defined('IS_PRESSABLE') && IS_PRESSABLE) {
+        return 'Pressable';
+    } elseif (defined('FLYWHEEL_CONFIG_DIR')) {
+        return 'Flywheel';
+    } elseif (defined('GD_SYSTEM_PLUGIN_DIR')) {
+        return 'GoDaddy';
+    }
+    return 'Unknown';
 }
 
 // Add plugin action links
@@ -214,11 +294,39 @@ function zap_add_action_links($links) {
 // Register activation hook
 register_activation_hook(__FILE__, 'zap_activate');
 function zap_activate() {
-    // Activation tasks if needed
+    // Log activation if debug is enabled
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Zap Cache activated on ' . zap_detect_hosting_provider() . ' hosting');
+    }
 }
 
 // Register deactivation hook
 register_deactivation_hook(__FILE__, 'zap_deactivate');
 function zap_deactivate() {
     // Cleanup tasks if needed
+}
+// Load scripts in frontend
+add_action('wp_footer', 'zap_add_purge_script');
+
+// Ensure dashicons are loaded in frontend
+add_action('wp_enqueue_scripts', 'zap_enqueue_dashicons');
+function zap_enqueue_dashicons() {
+    if (is_user_logged_in()) {
+        wp_enqueue_style('dashicons');
+    }
+}
+
+// Add the necessary styles for the frontend admin bar button
+add_action('wp_head', 'zap_add_custom_css');
+
+// Define ajaxurl in frontend
+add_action('wp_head', 'zap_add_ajax_url');
+function zap_add_ajax_url() {
+    if (current_user_can('manage_options')) {
+        ?>
+        <script type="text/javascript">
+            var ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
+        </script>
+        <?php
+    }
 }
