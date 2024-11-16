@@ -1,5 +1,7 @@
-**Zap Cache - WordPress Cache Clearing Plugin**
+Zap Cache - WordPress Cache Clearing Plugin
+
 One-click cache clearing solution for WordPress that works with major hosting providers and caching plugins. Adds a convenient button to the WordPress admin bar for instant cache clearing.
+
 Features
 
 One-click cache clearing from admin bar (frontend/backend)
