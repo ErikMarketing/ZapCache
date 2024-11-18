@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Zap Cache
  * Plugin URI: https://github.com/ErikMarketing/zap-cache
- * Description: Lightning-fast cache cleaning with one click. Supports Hostinger, WP Engine, Kinsta, SiteGround, Cloudways and major caching plugins
- * Version: 1.1.1
+ * Description: Lightning-fast cache cleaning with one click. Supports Hostinger, WP Engine, Kinsta, SiteGround, Cloudways, Nitropack and major caching plugins
+ * Version: 1.1.2
  * Author: ErikMarketing
  * Author URI: https://erik.marketing
  * License: GPL-3.0+
@@ -25,7 +25,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ZAP_VERSION', '1.1.1');
+define('ZAP_VERSION', '1.1.2');
 define('ZAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ZAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ZAP_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -205,6 +205,25 @@ function zap_purge_cache_callback() {
             $results['cloudways_breeze'] = true;
         }
 
+        // Nitropack Support
+        if (defined('NITROPACK_VERSION') && class_exists('\NitroPack\SDK\Integrations\Nitropack')) {
+            try {
+                // Clear all Nitropack cache
+                do_action('nitropack_integration_purge_all');
+                $results['nitropack_all'] = true;
+                
+                // Clear just page cache
+                do_action('nitropack_integration_purge_cache');
+                $results['nitropack_page'] = true;
+                
+            } catch (Exception $e) {
+                // Log error if debug is enabled
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('Nitropack cache clearing failed: ' . $e->getMessage());
+                }
+            }
+        }
+
         // Common Cache Plugins Support
         $cache_plugins = array(
             'w3tc' => 'w3tc_flush_all',
@@ -214,7 +233,8 @@ function zap_purge_cache_callback() {
             'autoptimize' => array('autoptimizeCache', 'clearall'),
             'litespeed_cache' => array('LiteSpeed_Cache_API', 'purge_all'),
             'swift_performance' => array('Swift_Performance_Cache', 'clear_all_cache'),
-            'hummingbird' => array('Hummingbird\Core\Cache', 'clear_page_cache')
+            'hummingbird' => array('Hummingbird\Core\Cache', 'clear_page_cache'),
+            'nitropack' => array('NitroPack\SDK\Integrations\Nitropack', 'purgeCache')
         );
 
         foreach ($cache_plugins as $plugin => $function) {
