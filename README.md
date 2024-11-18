@@ -4,7 +4,7 @@
 
 ## Overview
 
-Simple WordPress plugin that adds a cache clearing button to your admin bar. Works with Kinsta, SiteGround, Cloudways, WP Engine and major caching plugins.
+Simple WordPress plugin that adds a cache clearing button to your admin bar. Works with Hostinger, Kinsta, SiteGround, Cloudways, WP Engine and major caching plugins.
 
 ## 🚀 Features
 
@@ -14,6 +14,7 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 * Popular cache plugin support
 * Visual clearing feedback
 * Admin-only access
+* One-click clearing from admin bar
 
 ## 📋 Requirements
 
@@ -44,6 +45,7 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 
 ## 🏢 Supported Hosts
 
+* Hostinger
 * Kinsta
 * SiteGround
 * Cloudways
@@ -62,6 +64,16 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 * LiteSpeed Cache
 * Swift Performance
 * Hummingbird
+
+## ⚡ Cache Types Supported
+
+* WordPress Core Cache
+* Host-specific Caches
+* Page Cache
+* Object Cache (Redis/Memcached)
+* LiteSpeed Cache
+* OPcache
+* Nginx Helper Cache
 
 ## 🔒 Security
 
