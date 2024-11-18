@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Zap Cache
  * Plugin URI: https://github.com/ErikMarketing/zap-cache
- * Description: Lightning-fast cache cleaning with one click. Supports WP Engine, Kinsta, SiteGround, Cloudways and major caching plugins
- * Version: 1.1.0
+ * Description: Lightning-fast cache cleaning with one click. Supports Hostinger, WP Engine, Kinsta, SiteGround, Cloudways and major caching plugins
+ * Version: 1.1.1
  * Author: ErikMarketing
  * Author URI: https://erik.marketing
  * License: GPL-3.0+
@@ -25,7 +25,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ZAP_VERSION', '1.1.0');
+define('ZAP_VERSION', '1.1.1');
 define('ZAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ZAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ZAP_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -158,6 +158,21 @@ function zap_purge_cache_callback() {
         // Fire action for other plugins to hook into
         do_action('zap_before_cache_purge');
 
+        // Hostinger Support
+        if (defined('LSCWP_V')) {
+            // Clear LiteSpeed Cache
+            if (class_exists('LiteSpeed_Cache_API')) {
+                LiteSpeed_Cache_API::purge_all();
+                $results['hostinger_litespeed'] = true;
+            }
+            
+            // Clear Redis if active
+            if (class_exists('WP_Redis')) {
+                wp_cache_flush();
+                $results['hostinger_redis'] = true;
+            }
+        }
+
         // WP Engine Support
         if (class_exists('WpeCommon')) {
             if (method_exists('WpeCommon', 'purge_memcached')) {
@@ -263,7 +278,9 @@ function zap_purge_cache_callback() {
  * @return string
  */
 function zap_detect_hosting_provider() {
-    if (class_exists('WpeCommon')) {
+    if (defined('LSCWP_V')) {
+        return 'Hostinger';
+    } elseif (class_exists('WpeCommon')) {
         return 'WP Engine';
     } elseif (isset($GLOBALS['kinsta_cache'])) {
         return 'Kinsta';
@@ -305,6 +322,7 @@ register_deactivation_hook(__FILE__, 'zap_deactivate');
 function zap_deactivate() {
     // Cleanup tasks if needed
 }
+
 // Load scripts in frontend
 add_action('wp_footer', 'zap_add_purge_script');
 
