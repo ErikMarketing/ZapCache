@@ -14,6 +14,19 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 * Popular cache plugin support
 * Visual clearing feedback
 * Admin-only access
+* Performance tracking
+* Operation logging
+* Rate limiting protection
+* Memory usage optimization
+
+## 💫 Performance Features
+
+* Operation timing tracking
+* Memory usage monitoring
+* Cache count tracking
+* System information collection
+* Detailed error logging
+* Admin logs dashboard
 
 ## 📋 Requirements
 
@@ -30,8 +43,8 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 3. Activate in WordPress
 
 # From WordPress
-1. Go to Plugins > Add New
-2. Search for "Zap Cache"
+1. Go to Plugins > Add New Plugin
+2. Upload Plugin > Choose File "Zap Cache"
 3. Install & Activate
 ```
 
@@ -82,6 +95,40 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 * Nonce verification
 * Direct access prevention
 * Capability checking
+* Rate limiting protection
+* Operation logging
+
+## 📊 Performance Monitoring
+
+* Operation timing
+* Memory usage tracking
+* Cache count tracking
+* System information
+* Error logging
+* Performance history
+
+## 🗄️ Admin Features
+
+* Operation logs dashboard
+* Performance metrics
+* System information
+* Error tracking
+* Cache clearing history
+* Memory usage stats
+
+## 🔍 Debug Features
+* Detailed cache clearing logs
+* Host environment detection
+* Cache plugin detection
+* Performance metrics (clearing time)
+* Error tracking
+
+## 🛠️ Performance
+
+* Async cache clearing
+* Smart plugin detection
+* Minimal resource usage
+* No bloat
 
 ## 📦 Contributing
 
