@@ -3,7 +3,7 @@
  * Plugin Name: Zap Cache
  * Plugin URI: https://github.com/ErikMarketing/zap-cache
  * Description: Lightning-fast cache cleaning with one click. Supports Hostinger, WP Engine, Kinsta, SiteGround, Cloudways, Nitropack and major caching plugins
- * Version: 1.1.2
+ * Version: 1.2.0
  * Author: ErikMarketing
  * Author URI: https://erik.marketing
  * License: GPL-3.0+
@@ -25,10 +25,51 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ZAP_VERSION', '1.1.2');
+define('ZAP_VERSION', '1.2.0');
 define('ZAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ZAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ZAP_PLUGIN_BASENAME', plugin_basename(__FILE__));
+
+/**
+ * Log cache clearing operations
+ * @param array $results Cache clearing results
+ * @return void
+ */
+function zap_log_operation($results) {
+    if (!defined('WP_DEBUG') || !WP_DEBUG) {
+        return;
+    }
+    
+    $log = array(
+        'timestamp' => current_time('mysql'),
+        'user' => wp_get_current_user()->user_login,
+        'results' => $results,
+        'memory_used' => memory_get_peak_usage(true),
+        'host' => zap_detect_hosting_provider()
+    );
+    
+    $logs = get_option('zap_cache_logs', array());
+    array_unshift($logs, $log);
+    $logs = array_slice($logs, 0, 100); // Keep last 100 entries
+    
+    update_option('zap_cache_logs', $logs);
+}
+
+/**
+ * Check rate limiting
+ * @return bool Whether operation should proceed
+ */
+function zap_check_rate_limit() {
+    $last_clear = get_transient('zap_last_cache_clear');
+    if ($last_clear) {
+        $time_passed = time() - $last_clear;
+        if ($time_passed < 60) { // 1 minute limit
+            return false;
+        }
+    }
+    set_transient('zap_last_cache_clear', time(), HOUR_IN_SECONDS);
+    return true;
+}
 
 // Load plugin textdomain
 add_action('plugins_loaded', 'zap_load_textdomain');
@@ -139,6 +180,9 @@ function zap_add_purge_script() {
 // Handle the AJAX request to purge cache
 add_action('wp_ajax_zap_purge_cache', 'zap_purge_cache_callback');
 function zap_purge_cache_callback() {
+    // Start performance tracking
+    $start_time = microtime(true);
+    
     // Verify nonce and capabilities
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'zap_purge_cache_nonce')) {
         wp_send_json_error(__('Security check failed', 'zap-cache'));
@@ -148,12 +192,19 @@ function zap_purge_cache_callback() {
         wp_send_json_error(__('Permission denied', 'zap-cache'));
     }
 
+    // Check rate limiting
+    if (!zap_check_rate_limit()) {
+        wp_send_json_error(__('Please wait a minute before clearing cache again', 'zap-cache'));
+    }
+
     $results = array();
+    $cache_count = 0;
 
     try {
         // WordPress Core Cache
         wp_cache_flush();
         $results['wp_cache'] = true;
+        $cache_count++;
 
         // Fire action for other plugins to hook into
         do_action('zap_before_cache_purge');
@@ -164,12 +215,14 @@ function zap_purge_cache_callback() {
             if (class_exists('LiteSpeed_Cache_API')) {
                 LiteSpeed_Cache_API::purge_all();
                 $results['hostinger_litespeed'] = true;
+                $cache_count++;
             }
             
             // Clear Redis if active
             if (class_exists('WP_Redis')) {
                 wp_cache_flush();
                 $results['hostinger_redis'] = true;
+                $cache_count++;
             }
         }
 
@@ -178,10 +231,12 @@ function zap_purge_cache_callback() {
             if (method_exists('WpeCommon', 'purge_memcached')) {
                 WpeCommon::purge_memcached();
                 $results['wpe_memcached'] = true;
+                $cache_count++;
             }
             if (method_exists('WpeCommon', 'purge_varnish_cache')) {
                 WpeCommon::purge_varnish_cache();
                 $results['wpe_varnish'] = true;
+                $cache_count++;
             }
         }
 
@@ -190,6 +245,7 @@ function zap_purge_cache_callback() {
             if (method_exists($GLOBALS['kinsta_cache'], 'purge_complete_caches')) {
                 $GLOBALS['kinsta_cache']->purge_complete_caches();
                 $results['kinsta_cache'] = true;
+                $cache_count++;
             }
         }
 
@@ -197,12 +253,14 @@ function zap_purge_cache_callback() {
         if (function_exists('sg_cachepress_purge_cache')) {
             sg_cachepress_purge_cache();
             $results['siteground_cache'] = true;
+            $cache_count++;
         }
 
         // Cloudways Support
         if (class_exists('Breeze_Admin')) {
             do_action('breeze_clear_all_cache');
             $results['cloudways_breeze'] = true;
+            $cache_count++;
         }
 
         // Nitropack Support
@@ -211,13 +269,14 @@ function zap_purge_cache_callback() {
                 // Clear all Nitropack cache
                 do_action('nitropack_integration_purge_all');
                 $results['nitropack_all'] = true;
+                $cache_count++;
                 
                 // Clear just page cache
                 do_action('nitropack_integration_purge_cache');
                 $results['nitropack_page'] = true;
+                $cache_count++;
                 
             } catch (Exception $e) {
-                // Log error if debug is enabled
                 if (defined('WP_DEBUG') && WP_DEBUG) {
                     error_log('Nitropack cache clearing failed: ' . $e->getMessage());
                 }
@@ -242,10 +301,12 @@ function zap_purge_cache_callback() {
                 if (class_exists($function[0]) && method_exists($function[0], $function[1])) {
                     call_user_func(array($function[0], $function[1]));
                     $results[$plugin] = true;
+                    $cache_count++;
                 }
             } elseif (function_exists($function)) {
                 call_user_func($function);
                 $results[$plugin] = true;
+                $cache_count++;
             }
         }
 
@@ -253,12 +314,14 @@ function zap_purge_cache_callback() {
         if (class_exists('Nginx_Helper')) {
             do_action('rt_nginx_helper_purge_all');
             $results['nginx_helper'] = true;
+            $cache_count++;
         }
 
         // Clear OPcache if enabled
         if (function_exists('opcache_reset')) {
             opcache_reset();
             $results['opcache'] = true;
+            $cache_count++;
         }
 
         // Clear object cache for common providers
@@ -271,6 +334,7 @@ function zap_purge_cache_callback() {
             if (class_exists($class)) {
                 wp_cache_flush();
                 $results[$cache . '_object_cache'] = true;
+                $cache_count++;
                 break;
             }
         }
@@ -278,7 +342,16 @@ function zap_purge_cache_callback() {
         // Fire action after cache purge
         do_action('zap_after_cache_purge');
 
-        // Add debug information if WP_DEBUG is enabled
+        // Add performance metrics
+        $results['performance'] = array(
+            'time_taken' => round(microtime(true) - $start_time, 3),
+            'memory_peak' => memory_get_peak_usage(true),
+            'caches_cleared' => $cache_count,
+            'php_version' => phpversion(),
+            'wp_version' => get_bloginfo('version')
+        );
+
+        // Add debug information
         if (defined('WP_DEBUG') && WP_DEBUG) {
             $results['debug_info'] = array(
                 'hosting_provider' => zap_detect_hosting_provider(),
@@ -286,9 +359,13 @@ function zap_purge_cache_callback() {
             );
         }
 
+        // Log the operation
+        zap_log_operation($results);
+
         wp_send_json_success($results);
 
     } catch (Exception $e) {
+        error_log('Zap Cache Error: ' . $e->getMessage());
         wp_send_json_error($e->getMessage());
     }
 }
@@ -318,10 +395,84 @@ function zap_detect_hosting_provider() {
     return 'Unknown';
 }
 
+/**
+ * Add admin menu page
+ */
+add_action('admin_menu', 'zap_add_admin_menu');
+function zap_add_admin_menu() {
+    add_submenu_page(
+        'tools.php',
+        __('Zap Cache Logs', 'zap-cache'),
+        __('Zap Cache', 'zap-cache'),
+        'manage_options',
+        'zap-cache',
+        'zap_admin_page'
+    );
+}
+
+/**
+ * Render admin page
+ */
+function zap_admin_page() {
+    // Get logs
+    $logs = get_option('zap_cache_logs', array());
+    ?>
+    <div class="wrap">
+        <h1><?php _e('Zap Cache Logs', 'zap-cache'); ?></h1>
+        
+        <div class="tablenav top">
+            <div class="tablenav-pages">
+                <span class="displaying-num">
+                    <?php echo sprintf(
+                        __('%s operations logged', 'zap-cache'),
+                        number_format_i18n(count($logs))
+                    ); ?>
+                </span>
+            </div>
+        </div>
+
+        <table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th><?php _e('Time', 'zap-cache'); ?></th>
+                    <th><?php _e('User', 'zap-cache'); ?></th>
+                    <th><?php _e('Caches Cleared', 'zap-cache'); ?></th>
+                    <th><?php _e('Time Taken', 'zap-cache'); ?></th>
+                    <th><?php _e('Memory Used', 'zap-cache'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($logs as $log): ?>
+                    <tr>
+                        <td><?php echo esc_html($log['timestamp']); ?></td>
+                        <td><?php echo esc_html($log['user']); ?></td>
+                        <td><?php echo count($log['results']['cleared_caches'] ?? []); ?></td>
+                        <td><?php 
+                            if (isset($log['results']['performance']['time_taken'])) {
+                                echo sprintf(
+                                    __('%s seconds', 'zap-cache'),
+                                    number_format_i18n($log['results']['performance']['time_taken'], 3)
+                                );
+                            }
+                        ?></td>
+                        <td><?php 
+                            if (isset($log['memory_used'])) {
+                                echo size_format($log['memory_used']);
+                            }
+                        ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
 // Add plugin action links
 add_filter('plugin_action_links_' . ZAP_PLUGIN_BASENAME, 'zap_add_action_links');
 function zap_add_action_links($links) {
     $plugin_links = array(
+        '<a href="' . admin_url('tools.php?page=zap-cache') . '">' . __('View Logs', 'zap-cache') . '</a>',
         '<a href="https://github.com/ErikMarketing/zap-cache" target="_blank">' . 
         __('View on GitHub', 'zap-cache') . '</a>'
     );
@@ -340,7 +491,9 @@ function zap_activate() {
 // Register deactivation hook
 register_deactivation_hook(__FILE__, 'zap_deactivate');
 function zap_deactivate() {
-    // Cleanup tasks if needed
+    // Clean up logs and transients
+    delete_option('zap_cache_logs');
+    delete_transient('zap_last_cache_clear');
 }
 
 // Load scripts in frontend
