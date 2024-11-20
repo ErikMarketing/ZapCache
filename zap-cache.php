@@ -33,26 +33,78 @@ define('ZAP_PLUGIN_BASENAME', plugin_basename(__FILE__));
 /**
  * Log cache clearing operations
  * @param array $results Cache clearing results
- * @return void
+ * @return bool Whether the log was saved successfully
  */
 function zap_log_operation($results) {
-    if (!defined('WP_DEBUG') || !WP_DEBUG) {
-        return;
+    try {
+        // Get current user
+        $current_user = wp_get_current_user();
+        
+        // Prepare log entry
+        $log = array(
+            'timestamp' => current_time('mysql'),
+            'user' => $current_user->user_login,
+            'results' => $results,
+            'memory_used' => memory_get_peak_usage(true),
+            'host' => zap_detect_hosting_provider()
+        );
+        
+        // Get existing logs
+        $logs = get_option('zap_cache_logs', array());
+        
+        // Add new log to start
+        array_unshift($logs, $log);
+        
+        // Keep only last 100 entries
+        $logs = array_slice($logs, 0, 100);
+        
+        // Save updated logs
+        $update_result = update_option('zap_cache_logs', $logs);
+        
+        // Debug logging if enabled
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Zap Cache: Log operation ' . ($update_result ? 'successful' : 'failed'));
+            error_log('Zap Cache: Total logs: ' . count($logs));
+            error_log('Zap Cache: Memory used: ' . size_format($log['memory_used']));
+            error_log('Zap Cache: Host detected: ' . $log['host']);
+        }
+        
+        return $update_result;
+        
+    } catch (Exception $e) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Zap Cache Error: Failed to log operation - ' . $e->getMessage());
+        }
+        return false;
+    }
+}
+
+/**
+ * Get formatted logs for display
+ * @return array Formatted logs
+ */
+function zap_get_formatted_logs() {
+    $logs = get_option('zap_cache_logs', array());
+    
+    if (empty($logs)) {
+        return array();
     }
     
-    $log = array(
-        'timestamp' => current_time('mysql'),
-        'user' => wp_get_current_user()->user_login,
-        'results' => $results,
-        'memory_used' => memory_get_peak_usage(true),
-        'host' => zap_detect_hosting_provider()
-    );
+    // Format logs for display
+    foreach ($logs as &$log) {
+        $log['formatted_time'] = wp_date(
+            get_option('date_format') . ' ' . get_option('time_format'),
+            strtotime($log['timestamp'])
+        );
+        $log['formatted_memory'] = size_format($log['memory_used']);
+        $log['cache_count'] = count(array_filter($log['results']));
+        
+        if (isset($log['results']['performance'])) {
+            $log['time_taken'] = $log['results']['performance']['time_taken'];
+        }
+    }
     
-    $logs = get_option('zap_cache_logs', array());
-    array_unshift($logs, $log);
-    $logs = array_slice($logs, 0, 100); // Keep last 100 entries
-    
-    update_option('zap_cache_logs', $logs);
+    return $logs;
 }
 
 /**
@@ -411,13 +463,44 @@ function zap_add_admin_menu() {
 }
 
 /**
+ * Format time according to WordPress settings
+ */
+function zap_format_time($timestamp) {
+    return wp_date(
+        get_option('date_format') . ' ' . get_option('time_format'),
+        strtotime($timestamp)
+    );
+}
+
+/**
  * Render admin page
  */
 function zap_admin_page() {
     // Get logs
     $logs = get_option('zap_cache_logs', array());
+    
+    // Add admin page styles
     ?>
-    <div class="wrap">
+    <style>
+        .zap-cache-logs .widefat {
+            margin-top: 10px;
+        }
+        .zap-cache-logs .tablenav {
+            margin: 15px 0;
+        }
+        .zap-cache-logs .notice {
+            margin: 15px 0;
+        }
+        .zap-cache-count {
+            display: inline-block;
+            padding: 0 8px;
+            border-radius: 10px;
+            background: #2271b1;
+            color: #fff;
+        }
+    </style>
+    
+    <div class="wrap zap-cache-logs">
         <h1><?php _e('Zap Cache Logs', 'zap-cache'); ?></h1>
         
         <div class="tablenav top">
@@ -431,39 +514,67 @@ function zap_admin_page() {
             </div>
         </div>
 
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th><?php _e('Time', 'zap-cache'); ?></th>
-                    <th><?php _e('User', 'zap-cache'); ?></th>
-                    <th><?php _e('Caches Cleared', 'zap-cache'); ?></th>
-                    <th><?php _e('Time Taken', 'zap-cache'); ?></th>
-                    <th><?php _e('Memory Used', 'zap-cache'); ?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($logs as $log): ?>
+        <?php if (empty($logs)): ?>
+            <div class="notice notice-info">
+                <p><?php _e('No cache clearing operations logged yet. Clear your cache to see logs here.', 'zap-cache'); ?></p>
+            </div>
+        <?php else: ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
                     <tr>
-                        <td><?php echo esc_html($log['timestamp']); ?></td>
-                        <td><?php echo esc_html($log['user']); ?></td>
-                        <td><?php echo count($log['results']['cleared_caches'] ?? []); ?></td>
-                        <td><?php 
-                            if (isset($log['results']['performance']['time_taken'])) {
-                                echo sprintf(
-                                    __('%s seconds', 'zap-cache'),
-                                    number_format_i18n($log['results']['performance']['time_taken'], 3)
-                                );
-                            }
-                        ?></td>
-                        <td><?php 
-                            if (isset($log['memory_used'])) {
-                                echo size_format($log['memory_used']);
-                            }
-                        ?></td>
+                        <th width="20%"><?php _e('Time', 'zap-cache'); ?></th>
+                        <th width="15%"><?php _e('User', 'zap-cache'); ?></th>
+                        <th width="15%"><?php _e('Host', 'zap-cache'); ?></th>
+                        <th width="15%"><?php _e('Caches Cleared', 'zap-cache'); ?></th>
+                        <th width="15%"><?php _e('Time Taken', 'zap-cache'); ?></th>
+                        <th width="20%"><?php _e('Memory Used', 'zap-cache'); ?></th>
                     </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    <?php foreach ($logs as $log): ?>
+                        <tr>
+                            <td><?php echo esc_html(zap_format_time($log['timestamp'])); ?></td>
+                            <td><?php echo esc_html($log['user']); ?></td>
+                            <td><?php echo esc_html($log['host']); ?></td>
+                            <td>
+                                <?php 
+                                $cache_count = 0;
+                                if (isset($log['results']) && is_array($log['results'])) {
+                                    $cache_count = count(array_filter($log['results'], function($result) {
+                                        return $result === true;
+                                    }));
+                                }
+                                ?>
+                                <span class="zap-cache-count">
+                                    <?php echo esc_html($cache_count); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php 
+                                if (isset($log['results']['performance']['time_taken'])) {
+                                    echo sprintf(
+                                        __('%s seconds', 'zap-cache'),
+                                        number_format_i18n($log['results']['performance']['time_taken'], 3)
+                                    );
+                                } else {
+                                    echo '—';
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <?php 
+                                if (isset($log['memory_used'])) {
+                                    echo size_format($log['memory_used']);
+                                } else {
+                                    echo '—';
+                                }
+                                ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
     </div>
     <?php
 }
