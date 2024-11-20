@@ -42,10 +42,17 @@ Simple WordPress plugin that adds a cache clearing button to your admin bar. Wor
 2. Upload to wp-content/plugins/
 3. Activate in WordPress
 
+# From GitHub
+1. Download latest release
+2. Upload via WordPress Plugins > Add New > Upload Plugin
+3. Install Now
+4. Activate
+
 # From WordPress
 1. Go to Plugins > Add New Plugin
 2. Upload Plugin > Choose File "Zap Cache"
-3. Install & Activate
+3. Install Now
+4. Activate
 ```
 
 ## 🔧 Usage
