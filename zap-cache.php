@@ -25,7 +25,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ZAP_VERSION', '1.2.0');
+define('ZAP_VERSION', '1.2.1');
 define('ZAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ZAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('ZAP_PLUGIN_BASENAME', plugin_basename(__FILE__));
