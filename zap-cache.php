@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zap Cache
  * Plugin URI: https://github.com/ErikMarketing/zap-cache
- * Description: Lightning-fast cache cleaning with one click. Supports Hostinger, WP Engine, Kinsta, SiteGround, Cloudways, Nitropack and major caching plugins
+ * Description: Lightning-fast cache cleaning with one click. Automatic detection for Hostinger, WP Engine, Kinsta, SiteGround, Cloudways, Nitropack and major caching plugins
  * Version: 1.2.0
  * Author: ErikMarketing
  * Author URI: https://erik.marketing
