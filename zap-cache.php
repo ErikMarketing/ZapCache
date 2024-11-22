@@ -427,21 +427,28 @@ function zap_purge_cache_callback() {
  * @return string
  */
 function zap_detect_hosting_provider() {
-    if (defined('LSCWP_V')) {
+    if (defined('LSCWP_V') && class_exists('LiteSpeed_Cache_API')) {
         return 'Hostinger';
-    } elseif (class_exists('WpeCommon')) {
+    }
+    if (class_exists('WpeCommon')) {
         return 'WP Engine';
-    } elseif (isset($GLOBALS['kinsta_cache'])) {
+    }
+    if (isset($GLOBALS['kinsta_cache'])) {
         return 'Kinsta';
-    } elseif (function_exists('sg_cachepress_purge_cache')) {
+    }
+    if (function_exists('sg_cachepress_purge_cache')) {
         return 'SiteGround';
-    } elseif (class_exists('Breeze_Admin')) {
+    }
+    if (class_exists('Breeze_Admin')) {
         return 'Cloudways';
-    } elseif (defined('IS_PRESSABLE') && IS_PRESSABLE) {
+    }
+    if (defined('IS_PRESSABLE') && IS_PRESSABLE) {
         return 'Pressable';
-    } elseif (defined('FLYWHEEL_CONFIG_DIR')) {
+    }
+    if (defined('FLYWHEEL_CONFIG_DIR')) {
         return 'Flywheel';
-    } elseif (defined('GD_SYSTEM_PLUGIN_DIR')) {
+    }
+    if (defined('GD_SYSTEM_PLUGIN_DIR')) {
         return 'GoDaddy';
     }
     return 'Unknown';
