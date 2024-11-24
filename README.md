@@ -4,7 +4,7 @@
 
 ## Overview
 
-Simple WordPress plugin that adds a cache clearing button to your admin bar. Extra logging features, host detection and integration with several major caching plugins.
+Simple WordPress plugin that adds a cache clearing button to your admin bar. Accessible to authenticated administrators whilst browsing your live site or working in the backend dashboard. This lightweight plugin detects your hosting environment and interfaces with several popular caching solutions and managed hosting providers.
 
 ## 🚀 Features
 
